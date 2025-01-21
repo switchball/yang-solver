@@ -1,0 +1,15 @@
+.vscode
+*.pyc
+__pycache__/
+
+# Images for training
+output_tile*.png
+addon_*.png
+
+*.cache
+*.zip
+
+low_conf_images
+
+# Yolo training
+runs/
