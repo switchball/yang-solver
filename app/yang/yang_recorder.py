@@ -1,3 +1,4 @@
+import os
 import time
 import random
 import logging
@@ -36,6 +37,7 @@ class YangRecorder(object):
         self.action_list = []     # 执行的动作序列
 
         self.click_action_queue = []  # 监听的点击动作队列
+        self.cached_coords = (0, 0, 0, 0)
         self.listener = YangListener(self.click_action_queue, hotkey="Q", verbose=False)
 
     @property
@@ -58,13 +60,14 @@ class YangRecorder(object):
         thread.start()
         crt_coords = None
         tic = time.time()
-        while (tic + 40) > time.time():
+        while (tic + 10) > time.time():
             if self.should_wait_img:
                 # 等待截图
                 coords, screenshot = self._capture()
                 if screenshot is None:
                     continue
                 crt_coords = coords
+                self.cached_coords = crt_coords
                 self.img_state_list.append(screenshot)
                 self.logger.info("得到截图")
                 if len(self.click_action_queue) > 0:
@@ -85,7 +88,30 @@ class YangRecorder(object):
                         self.logger.info(f"Out of bounds because click_point ({click_x}, {click_y}) is out of bounds")
                 else:
                     time.sleep(0.01)  # 留空
+        
+        self.save_records()
 
+    def save_records(self):
+        folder_path = "replays"
+        self.logger.info(f"准备保存操作记录到 {folder_path}")
+        # if not os.path.exists(folder_path):
+        #     os.makedirs(folder_path)
+        # sub folder named with traj_day + hhmmss
+        sub_folder_path = os.path.join(folder_path, f"traj_{time.strftime('%Y%m%d_%H%M%S', time.localtime())}")
+        os.makedirs(sub_folder_path)
+        for i, img in enumerate(self.img_state_list):
+            img_path = os.path.join(sub_folder_path, f"{i:04d}.png")
+            img.save(img_path)
+        self.logger.info(f"已保存 {len(self.img_state_list)} 张图片到文件到 {sub_folder_path}")
+
+
+        with open(os.path.join(sub_folder_path, f"actions.txt"), "w") as f:
+            # write coords
+            c = self.cached_coords
+            f.write(f"{c[0]},{c[1]},{c[2]},{c[3]}\n")
+            for act in self.action_list:
+                f.write(f"{act[0]},{act[1]}\n")
+        self.logger.info(f"已保存 {len(self.action_list)} 个动作到文件到 {sub_folder_path}")
 
     def main_loop(self):
         tic = time.time()
