@@ -13,3 +13,6 @@ low_conf_images
 
 # Yolo training
 runs/
+
+# Replays
+replays/

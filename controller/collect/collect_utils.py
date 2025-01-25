@@ -51,6 +51,7 @@ class MouseKeyboardListener:
             import traceback
             traceback.print_exc()
             print("break", key)
+            self.stop_listening = True
             return False
 
             if all(getattr(keyboard.Key, mod) == key for mod in self.hotkey):

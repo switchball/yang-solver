@@ -31,7 +31,7 @@ class YangRecorder(object):
         self.react : BaseReact = config["react"]
 
         self.frame_seconds = 1 / config["fps"]
-        self.frame_max_running = config["frame_max_running"]
+        self.seconds_max_running = config["seconds_max_running"]
 
         self.img_state_list = []  # 图片的状态序列
         self.action_list = []     # 执行的动作序列
@@ -60,7 +60,10 @@ class YangRecorder(object):
         thread.start()
         crt_coords = None
         tic = time.time()
-        while (tic + 10) > time.time():
+        while (tic + self.seconds_max_running) > time.time():
+            if self.listener.stop_listening:
+                self.logger.info(f"Listener stopped, quit main record loop")
+                break
             if self.should_wait_img:
                 # 等待截图
                 coords, screenshot = self._capture()
@@ -142,15 +145,16 @@ class YangRecorder(object):
 
 
 if __name__ == "__main__":
+    time.sleep(3)
     setup_logging(log_file="logs/record.log")
     logger = logging.getLogger(__name__)
     logger.info("Starting recorder")
 
     recorder = YangRecorder({
-        "window_title": "Code",
+        "window_title": "羊了个羊",
         "recognizer": None,
         "react": None,
         "fps": 1,
-        "frame_max_running": 1000,
+        "seconds_max_running": 1000,
     })
     recorder.main_record_loop()
