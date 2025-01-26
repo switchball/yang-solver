@@ -33,11 +33,13 @@ class YangCvRecognizer(BaseRecognizer):
 
         return MaybeResult(result=hstate, prob=1)
 
-    def get_cards(self, im: np.array, normalize=False):
+    def get_cards(self, im: np.array, normalize=False, pool_queue_split_ratio=0.85, min_area=5000):
         """
         使用 CV 方法识别卡牌
         :param im: np.array 待识别的图片
         :param normalize: bool 返回的坐标值是否归一化
+        :param pool_queue_split_ratio: float 池子与待消除序列的在 y 轴的分割比例
+        :param min_area: int 卡牌最小面积过滤阈值
         :return: (list[list], list[list]) 池子中的卡牌, 待消除序列中的卡牌
                     每一行包含: label, x, y, w, h, center_x, center_y
         """
@@ -66,11 +68,14 @@ class YangCvRecognizer(BaseRecognizer):
                 label = np.argmax(ssmi)
 
                 entry = [label, x, y, w, h, int(center_x), int(center_y)]
+                area = w * h
+                if area < min_area:  # 卡牌面积太小则忽略
+                    continue
                 height, width = im.shape[:2]  # 注意数组情况下的 shape 是反过来的
                 if normalize:
                     entry = [label, x/width, y/height, w/width, h/height, center_x/width, center_y/height]
 
-                if int(center_y) < 0.85 * height:
+                if int(center_y) < pool_queue_split_ratio * height:
                     pool_cards.append(entry)  # 池子中的卡牌
                 else:  
                     queue_cards.append(entry)  # 待消除序列中的卡牌

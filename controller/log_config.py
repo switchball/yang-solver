@@ -18,15 +18,15 @@ def setup_logging(log_file='app.log'):
 
     # 创建日志记录器
     logger = logging.getLogger()
-    logger.setLevel(logging.DEBUG)  # 设置日志级别
+    logger.setLevel(logging.INFO)  # 设置日志级别
 
     # 创建文件处理器
     file_handler = logging.FileHandler(log_file, encoding='utf-8')
-    file_handler.setLevel(logging.DEBUG)  # 设置文件处理器的日志级别
+    file_handler.setLevel(logging.INFO)  # 设置文件处理器的日志级别
 
     # 创建控制台处理器
     console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.DEBUG)  # 设置控制台处理器的日志级别
+    console_handler.setLevel(logging.INFO)  # 设置控制台处理器的日志级别
 
     # 定义日志格式
     formatter = logging.Formatter(

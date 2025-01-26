@@ -16,3 +16,5 @@ runs/
 
 # Replays
 replays/
+traj_*.png
+traj_*.txt
