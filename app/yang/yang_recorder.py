@@ -155,6 +155,6 @@ if __name__ == "__main__":
         "recognizer": None,
         "react": None,
         "fps": 1,
-        "seconds_max_running": 1000,
+        "seconds_max_running": 1200,
     })
     recorder.main_record_loop()
