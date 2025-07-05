@@ -6,159 +6,135 @@ from collections import defaultdict, deque
 import math
 from typing import List, Dict
 from flet.canvas import Line, Canvas
+from search.mcts import MCTS
+from search.tree_node import TreeNode
+from app.yang.logic.yang_tree_node import YangTreeNode
+from app.yang.logic.yang_simulator import YangSimulator
+from app.yang.yang_yolo_recognizer import YangYOLORecognizer
 
-# 模拟 MCTS 节点类
-class MCTSNode:
-    node_id_counter = 1
-    
-    def __init__(self, parent=None, action=None, hidden_state=None):
-        self.id = MCTSNode.node_id_counter
-        MCTSNode.node_id_counter += 1
-        self.parent = parent
-        self.action = action
-        self.children = []
-        self.visits = 0
-        self.value = 0.0
-        self.q_value = 0.0
-        self.hidden_state = hidden_state or {
-            "board": [[random.choice(["X", "O", "-"]) for _ in range(3)] for _ in range(3)],
-            "current_player": random.choice(["X", "O"]),
-            "step": random.randint(0, 8)
-        }
-    
-    @property
-    def winning_rate(self):
-        return (self.value + self.visits) / (2 * self.visits) if self.visits > 0 else 0.0
-    
-    def add_child(self, action, hidden_state=None):
-        child = MCTSNode(parent=self, action=action, hidden_state=hidden_state)
-        self.children.append(child)
-        return child
-    
-    def update(self, value):
-        self.visits += 1
-        self.value += value
-        self.q_value = self.value / self.visits if self.visits > 0 else 0
-    
-    def is_fully_expanded(self):
-        return len(self.children) >= 7  # 模拟有限的行动空间
-    
-    def is_leaf(self):
-        return not self.children
-    
-    def __repr__(self):
-        return f"Node(id={self.id}, visits={self.visits}, q={self.q_value:.2f}, win:{self.winning_rate:.1%})"
+from visual_tree_node import VisualTreeNode
+import os
+import base64
+from PIL import Image
 
-# 模拟 MCTS 算法
-class MCTSAlgorithm:
-    def __init__(self, root_state):
-        self.root = MCTSNode(hidden_state=root_state)
-        self.current_node = self.root
+# 真实 MCTS 算法包装器
+class RealMCTSAlgorithm:
+    def __init__(self):
+        # 初始化杨氏模拟器
+        model_path = "runs/detect/train3/weights/best.pt"
+        self.recognizer = YangYOLORecognizer(model_path)
+        
+        # 创建根节点 - 使用crop_im.png作为初始状态
+        from PIL import Image
+        root_image = Image.open("crop_im.png")
+        from app.yang.logic.yang_board_state import YangBoardState
+        root_state = YangBoardState(root_image, last_hstate=None, simulator=self.recognizer)
+        real_root = YangTreeNode(state=root_state)
+        
+        # 初始化真实MCTS
+        self.mcts = MCTS(
+            root_node=real_root,
+            rollout_policy=self.rollout_policy,
+            rollout_iterations=1,
+            node_clz=YangTreeNode
+        )
+        
+        # 可视化根节点
+        self.visual_root = VisualTreeNode(real_root)
+        self.current_visual_node = self.visual_root
+        
+        # 计数器
         self.simulation_counter = 0
         self.expansion_counter = 0
         
-    def selection(self):
-        # 从根节点开始，递归选择子节点直到遇到叶子节点
-        node = self.root
-        path = [node]
-        while not node.is_leaf() and node.is_fully_expanded():
-            # 使用UCT选择
-            best_score = -float('inf')
-            best_child = None
-            
-            for child in node.children:
-                # UCB公式
-                exploit = child.q_value
-                explore = math.sqrt(2.0 * math.log(node.visits + 1) / (child.visits + 1e-6))
-                score = exploit + explore
-                
-                if score > best_score:
-                    best_score = score
-                    best_child = child
-            
-            if best_child:
-                node = best_child
-                path.append(node)
-            else:
-                break
-        
-        self.current_node = node
-        return path
-    
-    def expansion(self):
-        # 如果当前节点没有被探索过，则扩展它
-        if self.current_node.visits >= 1 and not self.current_node.is_fully_expanded():
-            # 随机选择一个新操作
-            action = f"Move {random.randint(1, 9)}"
-            
-            # 创建新的子节点
-            new_state = json.loads(json.dumps(self.current_node.hidden_state))  # Deep copy
-            new_state["board"][random.randint(0,2)][random.randint(0,2)] = self.current_node.hidden_state["current_player"]
-            new_state["step"] = new_state["step"] + 1
-            new_state["current_player"] = "X" if self.current_node.hidden_state["current_player"] == "O" else "O"
-            
-            child = self.current_node.add_child(action, new_state)
-            self.expansion_counter += 1
-            return child
-        return None
-    
-    def simulation(self):
-        # 模拟随机游戏直到结束
+    def rollout_policy(self, node):
+        """Rollout policy using real implementation from yang_react.py"""
         self.simulation_counter += 1
-        return random.random() * 2 - 1  # 返回一个介于-1到1之间的随机值
-    
-    def backpropagation(self, value, path):
-        # 沿路径传播模拟结果
-        for node in reversed(path):
-            node.update(value)
-    
-    def run_iteration(self):
-        # 运行一次完整的MCTS迭代
-        path = self.selection()
-        new_node = self.expansion()
-        if new_node:
-            path.append(new_node)
+        # 使用真实rollout策略
+        from test_rollout import step
+        from copy import deepcopy
         
-        value = self.simulation()
-        self.backpropagation(value, path)
+        # 获取隐藏状态
+        hstate_dict = node.state.get_hstate()._hstate
+        hstate = deepcopy(hstate_dict)
+        
+        # 模拟直到结束
+        while not step(hstate):
+            pass
+            
+        return hstate["score"]
+
+    def run_iteration(self, run_step=1):
+        """运行一次完整的MCTS迭代"""
+        # 运行真实MCTS迭代
+        self.mcts.run(run_step)
+        
+        # 更新可视化树
+        self._update_visual_tree()
         
         # 返回用于可视化的信息
         return {
-            "selected_path": [node.id for node in path],
-            "expanded_node": new_node.id if new_node else None,
             "step": self.simulation_counter + self.expansion_counter
         }
+        
+    def _update_visual_tree(self):
+        """更新可视化树结构以匹配真实MCTS树"""
+        # 清空现有可视化树
+        self.visual_root = VisualTreeNode(self.mcts.root_node)
+        self.current_visual_node = self.visual_root
+        
+        # 递归添加子节点
+        self._add_children(self.mcts.root_node, self.visual_root)
+    
+    def _add_children(self, real_node: TreeNode, visual_node: VisualTreeNode):
+        """递归添加子节点到可视化树"""
+        if real_node in self.mcts.children:
+            for real_child in self.mcts.children[real_node]:
+                visual_child = visual_node.add_child(real_child)
+                self._add_children(real_child, visual_child)
 
-# 创建棋盘的可视化表示
-def create_board_ui(board, size=100):
-    grid = ft.GridView(
-        runs_count=3,
-        max_extent=size,
-        child_aspect_ratio=1.0,
-        spacing=0,
-        run_spacing=0
-    )
-    
-    for i, row in enumerate(board):
-        for j, cell in enumerate(row):
-            border = ft.border.all(1, ft.colors.BLUE_GREY_300)
-            bg_color = ft.colors.BLUE_GREY_900 if (i + j) % 2 == 0 else ft.colors.BLUE_GREY_800
-            
-            grid.controls.append(
-                ft.Container(
-                    content=ft.Text(
-                        value=cell, 
-                        size=size//2, 
-                        text_align=ft.TextAlign.CENTER,
-                        color=ft.colors.BLUE_200 if cell == "X" else ft.colors.RED_200
-                    ),
-                    bgcolor=bg_color,
-                    border=border,
-                    alignment=ft.alignment.center
-                )
-            )
-    
-    return grid
+    @property
+    def root(self):
+        return self.visual_root
+
+    def reset(self, root_state):
+        """重置MCTS树"""
+        root_state = self.simulator.initialize_state()
+        real_root = YangTreeNode(state=root_state)
+        self.mcts = MCTS(
+            root_node=real_root,
+            rollout_policy=self.rollout_policy,
+            rollout_iterations=1,
+            node_clz=YangTreeNode
+        )
+        self.visual_root = VisualTreeNode(real_root)
+        self.current_visual_node = self.visual_root
+        self.simulation_counter = 0
+        self.expansion_counter = 0
+
+# 创建棋盘的可视化表示（支持图像加载）
+def create_board_ui(state, size=100):
+    # 检查是否有图像数据
+    try:
+        # 将图像转换为base64
+        img = state.get_crt_img()
+        img_width, img_height = img.size
+        img_path = f"temp_board_{int(time.time())}.png"
+        img.save(img_path)
+
+        # buffered = BytesIO()
+        # crop_im.save(buffered, format="PNG")
+        # img_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+        
+        return ft.Image(
+            src=img_path,
+            width=img_width*0.3,
+            height=img_height*0.3,
+            fit=ft.ImageFit.CONTAIN
+        )
+    except Exception as e:
+        print(f"图像加载失败: {str(e)}")
+
 
 # MCTS 可视化工具
 class MCTSVisualizer:
@@ -184,12 +160,7 @@ class MCTSVisualizer:
         self.stats_container_ref = ft.Ref[ft.Column]()
         
         # 初始化MCTS算法
-        root_state = {
-            "board": [["-", "-", "-"], ["-", "-", "-"], ["-", "-", "-"]],
-            "current_player": "X",
-            "step": 0
-        }
-        self.mcts = MCTSAlgorithm(root_state)
+        self.mcts = RealMCTSAlgorithm()
         self.page.update()
         
         # 可视化组件
@@ -426,10 +397,10 @@ class MCTSVisualizer:
         for node_id, (x, y) in positions.items():
             node = self.all_nodes[node_id]
             bg_color = (ft.colors.BLUE_900
-                        if node == self.mcts.current_node else
+                        if node == self.mcts.current_visual_node else
                         ft.colors.BLUE_GREY_800)
             border_color = (ft.colors.BLUE_400
-                            if node == self.mcts.current_node else
+                            if node == self.mcts.current_visual_node else
                             ft.colors.BLUE_GREY_500)
             
             node_containers.append(
@@ -490,7 +461,7 @@ class MCTSVisualizer:
         
         return nodes_to_display
     
-    def _get_path_to_root(self, node: MCTSNode) -> list:
+    def _get_path_to_root(self, node: TreeNode) -> list:
         """获取从指定节点到根节点的路径"""
         # 由于我们没有直接的父引用，这里使用父映射查找
         path = [node]
@@ -506,7 +477,7 @@ class MCTSVisualizer:
         
         return path
     
-    def _get_all_descendants(self, node: MCTSNode) -> set:
+    def _get_all_descendants(self, node: TreeNode) -> set:
         """获取指定节点的所有后代（包括子节点、孙节点等）集合"""
         descendants = set()
         queue = deque([node])
@@ -519,8 +490,18 @@ class MCTSVisualizer:
                 
         return descendants
 
-    def show_node_details(self, node: MCTSNode):
-        board_ui = create_board_ui(node.hidden_state["board"])
+    def show_node_details(self, node: VisualTreeNode):
+        # 获取真实节点状态
+        real_state = node.real_node.state # if hasattr(node.real_node, 'state') else None
+        
+        # 创建棋盘UI
+        board_ui = create_board_ui(
+            real_state
+        )
+        
+        # 创建hstate JSON展示
+        hstate_json = json.dumps(node.hidden_state, indent=2, ensure_ascii=False)
+        json_view = ft.Text(hstate_json, selectable=True, size=12)
         
         details = ft.Column([
             ft.Row([
@@ -537,12 +518,7 @@ class MCTSVisualizer:
             board_ui,
             ft.Divider(height=10),
             ft.Text("隐藏状态:", weight=ft.FontWeight.BOLD),
-            ft.Text(
-                json.dumps({k: v for k, v in node.hidden_state.items() if k != "board"}, 
-                          indent=2), 
-                size=12, 
-                selectable=True
-            )
+            json_view
         ], scroll=ft.ScrollMode.ALWAYS)
         
         if self.node_detail_ref.current:
@@ -563,6 +539,9 @@ class MCTSVisualizer:
         # 执行一次迭代
         result = self.mcts.run_iteration()
         
+        # 重置节点ID计数器
+        VisualTreeNode.reset_node_counter()
+        
         # 重新注册整个树结构（确保所有节点都在 all_nodes 中）
         self.all_nodes = {}  # 先清空字典
         self.register_node(self.mcts.root)
@@ -570,16 +549,18 @@ class MCTSVisualizer:
         self.update_tree_visualization()
 
     def n_step_forward(self, e: ft.ControlEvent):
-        # 执行一次迭代
-        for i in range(self.step_count):
-            result = self.mcts.run_iteration()
+        # 执行 step_count 次迭代
+        result = self.mcts.run_iteration(run_step=self.step_count)
+        
+        # 重置节点ID计数器
+        VisualTreeNode.reset_node_counter()
         
         # 重新注册整个树结构（确保所有节点都在 all_nodes 中）
         self.all_nodes = {}  # 先清空字典
         self.register_node(self.mcts.root)
         
         self.update_tree_visualization()
-
+        
         self.page.show_snack_bar(ft.SnackBar(
             ft.Text(f"已连续运行 {self.step_count} 步", color=ft.colors.WHITE),
             bgcolor=ft.colors.GREEN,
@@ -587,7 +568,7 @@ class MCTSVisualizer:
         ))
 
     # 递归注册节点的方法
-    def register_node(self, node: MCTSNode):
+    def register_node(self, node: TreeNode):
         """递归注册节点及其所有子节点到all_nodes字典"""
         # 如果节点已注册，直接返回
         if node.id in self.all_nodes:
@@ -605,13 +586,8 @@ class MCTSVisualizer:
     
     def reset(self, e: ft.ControlEvent):
         self.running = False
-        root_state = {
-            "board": [["-", "-", "-"], ["-", "-", "-"], ["-", "-", "-"]],
-            "current_player": "X",
-            "step": 0
-        }
-        MCTSNode.node_id_counter = 1
-        self.mcts = MCTSAlgorithm(root_state)
+        VisualTreeNode.reset_node_counter()
+        self.mcts.reset()
         self.all_nodes = {}
         self.register_node(self.mcts.root)
         self.update_tree_visualization()
@@ -633,5 +609,18 @@ def main(page: ft.Page):
     page.horizontal_alignment = ft.CrossAxisAlignment.START
     page.scroll = ft.ScrollMode.ADAPTIVE
     visualizer = MCTSVisualizer(page)
+
+# 清理临时图像文件
+def cleanup_temp_images():
+    for file in os.listdir():
+        if file.startswith("temp_board_"):
+            try:
+                os.remove(file)
+            except:
+                pass
+
+# 注册清理函数
+import atexit
+atexit.register(cleanup_temp_images)
 
 ft.app(target=main)
