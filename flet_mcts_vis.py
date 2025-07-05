@@ -163,16 +163,21 @@ class MCTSVisualizer:
         self.mcts = RealMCTSAlgorithm()
         self.page.update()
         
-        # 可视化组件
-        self.tree_visualization = ft.Container(
-            ref=self.tree_visualization_ref,
-            width=1100,
-            height=800,
-            bgcolor=ft.colors.BLUE_GREY_900,
-            padding=20,
-            border_radius=10,
-            border=ft.border.all(1, ft.colors.BLUE_GREY_700),
-            content=ft.Column(expand=True)
+        # 可视化组件（添加手势检测）
+        self.tree_visualization = ft.GestureDetector(
+            on_pan_start=self.handle_right_pan_start,
+            on_pan_update=self.handle_right_pan_update,
+            on_pan_end=self.handle_right_pan_end,
+            content=ft.Container(
+                ref=self.tree_visualization_ref,
+                width=1100,
+                height=800,
+                bgcolor=ft.colors.BLUE_GREY_900,
+                padding=20,
+                border_radius=10,
+                border=ft.border.all(1, ft.colors.BLUE_GREY_700),
+                content=ft.Column(expand=True)
+            )
         )
         
         self.stats_panel = ft.Card(
@@ -272,6 +277,14 @@ class MCTSVisualizer:
         self.focus_node = None  # 新添加：当前聚焦的节点
         self.show_full_tree = True  # 新添加：是否显示完整树（默认显示）
 
+        # 平移相关变量
+        self.pan_offset_x = 0
+        self.pan_offset_y = 0
+        self.pan_start_x = 0
+        self.pan_start_y = 0
+        self.is_panning = False
+        self.paning_ts = 0
+
         # 状态变量
         self.running = False
         self.speed = 0.5  # 秒
@@ -295,7 +308,7 @@ class MCTSVisualizer:
                 content=ft.Stack(tree_graph, expand=True),
             )
             self.tree_visualization_ref.current.update()
-        
+
         # 更新统计信息
         iteration_count = self.mcts.simulation_counter + self.mcts.expansion_counter
         if self.iterations_ref.current:
@@ -310,8 +323,31 @@ class MCTSVisualizer:
         if self.simulations_ref.current:
             self.simulations_ref.current.value = f"模拟次数: {self.mcts.simulation_counter}"
             self.simulations_ref.current.update()
+            
+    def handle_right_pan_start(self, e: ft.DragStartEvent):
+        self.is_panning = True
+        self.pan_start_x = e.local_x
+        self.pan_start_y = e.local_y
+        self.paning_ts = e.timestamp
+            
+    def handle_right_pan_update(self, e: ft.DragUpdateEvent):
+        if self.is_panning:
+            self.is_panning = False
+            self.pan_offset_x += (e.local_x - self.pan_start_x)
+            self.pan_offset_y += (e.local_y - self.pan_start_y)
+            self.pan_start_x = e.local_x
+            self.pan_start_y = e.local_y
+            self.update_tree_visualization()
+            self.is_panning = True
+            
+    def handle_right_pan_end(self, e: ft.DragEndEvent):
+        self.is_panning = False
         
     def build_tree_graph(self) -> List[ft.Control]:
+        X_SPACING = 75  # 节点之间的水平间距
+        Y_SPACING = 70  # 节点之间的垂直间距
+        NODE_WIDTH = 60  # 节点的宽度
+        NODE_HEIGHT = 30  # 节点的高度
         # 如果树容器尚未准备好，返回空列表
         if not self.tree_visualization_ref.current:
             return []
@@ -351,7 +387,7 @@ class MCTSVisualizer:
             # 为每个子节点安排位置
             child_count = len(node.children)
             for i, child in enumerate(node.children):
-                child_x = x_offset - (child_count - 1) * 20 + i * 40
+                child_x = x_offset - (child_count - 1) * X_SPACING * 0.5 + i * X_SPACING
 
                 # 确定是否显示该子节点（不显示的子节点只是占位，不会展开其子树）
                 display_child = display_children and (  # 只有当父节点设置为显示时
@@ -365,15 +401,16 @@ class MCTSVisualizer:
         # 创建 Canvas 用于绘制线条
         canvas = Canvas()
         lines = []  # 存储线条元素
-        spacing = 60
+        spacing = Y_SPACING
         
         # 为每个节点创建位置映射
         positions = {}
         for level, nodes in levels.items():
             total_nodes = len(nodes)
             for i, (node_id, x_offset, parent_id) in enumerate(nodes):
-                y = level * spacing + 60
-                x = tree_width // 2 + x_offset * 2.5
+                x, y = self.pan_offset_x, self.pan_offset_y  # 使用偏移量
+                y += level * spacing + spacing
+                x += tree_width // 2 + x_offset * 1
                 positions[node_id] = (x, y)
                 
                 # 如果存在父节点，画一条线
@@ -405,10 +442,10 @@ class MCTSVisualizer:
             
             node_containers.append(
                 ft.Container(
-                    width=80,
-                    height=30,
-                    top=y - 15,
-                    left=x - 40,
+                    width=NODE_WIDTH,
+                    height=NODE_HEIGHT,
+                    top=y - NODE_HEIGHT / 2,
+                    left=x - NODE_WIDTH / 2,
                     bgcolor=bg_color,
                     border_radius=8,
                     border=ft.border.all(2, border_color),
@@ -590,6 +627,9 @@ class MCTSVisualizer:
         self.mcts.reset()
         self.all_nodes = {}
         self.register_node(self.mcts.root)
+        # 重置平移状态
+        self.pan_offset_x = 0
+        self.pan_offset_y = 0
         self.update_tree_visualization()
         
         if self.node_detail_ref.current:
