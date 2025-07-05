@@ -4,7 +4,7 @@ from collections import Counter
 from app.yang.yang_constants import CARD_KINDS
 
 class YangHiddenState:
-    INIT_CARDS = 6 * 3  # each 6 copy(s)
+    INIT_CARDS = 5 * 3  # each 5 copy(s)
 
     def __init__(self, hstate: dict):
         self._hstate = hstate
@@ -45,7 +45,7 @@ class YangHiddenState:
         # all cards
         for k in range(CARD_KINDS):
             if k in cnt:
-                pool[k] = [cnt[k], 0, cls.INIT_CARDS - cnt[k]]
+                pool[k] = [cnt[k], 0, cls.INIT_CARDS]
             else:
                 pool[k] = [0, 0, cls.INIT_CARDS]
         for c in queue_cards:

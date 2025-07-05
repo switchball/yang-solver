@@ -36,6 +36,16 @@ class YangBoardState(object):
             self._simulate()
 
         return self._cached_pool_cards
+    
+    def get_action_prior_weights(self, actions):
+        weights = []
+        for action in actions:
+            is_critical_action = action[7]
+            if is_critical_action:
+                weights.append(1)
+            else:
+                weights.append(0.01)
+        return weights
 
 
 class YangSimulatedState(YangBoardState):

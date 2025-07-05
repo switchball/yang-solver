@@ -11,6 +11,8 @@ print("YOLO loaded.")
 from app.yang.yang_constants import (
     CARD_KINDS,
     MAIN_AREA_POSITION,
+    VERBOSE, 
+    CRITIC_AREA_CONFIG,
     # NUM_BOARD_ROWS,
     # NUM_BOARD_COLS,
     # SHOULD_SAVE_LOW_CONF_IMAGES,
@@ -57,9 +59,27 @@ class YangYOLORecognizer:
             confidence = box.conf[0].item()
             class_id = box.cls[0].item()
             class_name = result.names[class_id]
-            print(f"类别: {class_name}, 置信度: {confidence:.2f}, 边界框: [{x1}, {y1}, {x2}, {y2}]")
+
+            # 检测边界框需要是近似方的，i.e. 短边 / 长边 > 0.7 否则剔除
+            range_x = x2 - x1
+            range_y = y2 - y1
+            if min(range_x, range_y) <= 0.7 * max(range_x, range_y):
+                print(f"边界框不符合要求: range_x={range_x} range_y={range_y}")
+                continue
+
+            is_critical_action = self._calc_overlap_with_critic_area(x1, y1, x2, y2, width, height)
+            if VERBOSE:
+                print(f"类别: {class_name}, 置信度: {confidence:.2f}, 边界框: [{x1:.2f}, {y1:.2f}, {x2:.2f}, {y2:.2f}], 是否关键: {is_critical_action}")
+
             # print(repr(confidence), type(confidence), type(x1), class_name)
-            entry = (class_id, x1, y1, x2 - x1, y2 - y1, (x1 + x2) * .5, (y1 + y2) * .5)
+            entry = (class_id, x1, y1, x2 - x1, y2 - y1, (x1 + x2) * .5, (y1 + y2) * .5, is_critical_action)
+
+            # 检测边界框需要是近似方的，i.e. 短边 / 长边 > 0.7 
+            range_x = x2 - x1
+            range_y = y2 - y1
+            if min(range_x, range_y) <= 0.7 * max(range_x, range_y):
+                print(f"边界框不符合要求: range_x={range_x} range_y={range_y}")
+                continue
 
             if entry[6] < 0.85 * height:
                 pool_cards.append(entry)
@@ -74,3 +94,54 @@ class YangYOLORecognizer:
         # self._save_low_conf_images(img_list, top_confidence)
 
         return recognize_result, prod_confidence
+
+    def _calc_overlap_with_critic_area(self, x1, y1, x2, y2, width, height, overlap_threshold = 0.5) -> list:
+        sum_area = sum(self._calc_overlap_with_critic_area_single(x1, y1, x2, y2, critic_area, (width, height)) for critic_area in CRITIC_AREA_CONFIG)
+        # print("Sum Area:", sum_area, "Overlap Threshold:", overlap_threshold, "Overlap:", sum_area > overlap_threshold)
+        return sum_area > overlap_threshold
+
+    def _calc_overlap_with_critic_area_single(self, x1, y1, x2, y2, critic_area: list, image_size) -> list:
+        """
+        计算矩形 (x1, y1, x2, y2) 与 critic_area 的重叠面积占比。
+        
+        :param x1: 矩形左上角 x 坐标
+        :param y1: 矩形左上角 y 坐标
+        :param x2: 矩形右下角 x 坐标
+        :param y2: 矩形右下角 y 坐标
+        :param critic_area: tuple (x, y, w, h)，表示 critic area 的归一化坐标
+        :param image_size: tuple (width, height)，表示图像的尺寸
+        :return: 重叠面积占原矩形面积的比例 (0~1)
+        """
+        # 解包 critic_area 并还原为绝对坐标（假设图像尺寸为 width, height）
+        img_w, img_h = image_size  # 如果是归一化坐标，可设为 1.0
+        cx, cy, cw, ch = critic_area
+        cx_abs = cx * img_w
+        cy_abs = cy * img_h
+        cw_abs = cw * img_w
+        ch_abs = ch * img_h
+
+        # 转换为左上右下坐标形式
+        cx1, cy1 = cx_abs, cy_abs
+        cx2, cy2 = cx_abs + cw_abs, cy_abs + ch_abs
+
+        # 计算交集区域坐标
+        inter_x1 = max(x1, cx1)
+        inter_y1 = max(y1, cy1)
+        inter_x2 = min(x2, cx2)
+        inter_y2 = min(y2, cy2)
+
+        # 如果没有交集
+        if inter_x1 >= inter_x2 or inter_y1 >= inter_y2:
+            return 0.0
+
+        # 计算交集面积
+        inter_area = (inter_x2 - inter_x1) * (inter_y2 - inter_y1)
+        # 原始矩形面积
+        rect_area = (x2 - x1) * (y2 - y1)
+
+        # 防止除以零
+        if rect_area == 0:
+            return 0.0
+
+        # 返回重叠面积占比
+        return inter_area / rect_area

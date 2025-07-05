@@ -27,5 +27,5 @@ class YangTreeNode(TreeNode):
 
     def get_action_weights(self):
         # override
-        return [1.0] * len(self._available_actions)
+        return self.state.get_action_prior_weights(self.get_possible_actions())
 

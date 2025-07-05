@@ -15,7 +15,7 @@ class YangSimulator(object):
         pass
 
 
-def fast_rollout_policy(node: YangTreeNode):
+def sample_rollout_policy(node: YangTreeNode):
     # looping num is outside the loop
     hstate_dict = node.state.get_hstate()._hstate
     hstate = deepcopy(hstate_dict)
@@ -35,7 +35,7 @@ if __name__ == "__main__":
 
     state = YangBoardState(full_image, last_hstate=None, simulator=recognizer)
     root = YangTreeNode(state=state)
-    mcts = MCTS(root, rollout_policy=fast_rollout_policy, rollout_iterations=100, node_clz=YangTreeNode)
+    mcts = MCTS(root, rollout_policy=sample_rollout_policy, rollout_iterations=100, node_clz=YangTreeNode)
 
     mcts.run(30)
 

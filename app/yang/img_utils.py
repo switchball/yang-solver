@@ -19,7 +19,7 @@ def image_overlay(img_i, selected_cards):
     draw = ImageDraw.Draw(new_img)
 
     for card in selected_cards:
-        _, _, _, w, _, center_x, center_y = card
+        _, _, _, w, _, center_x, center_y, is_critical_action = card
         radius = w / 3
         # Calculate the bounding box for the circle
         left_up_point = (center_x - radius, center_y - radius)
@@ -76,10 +76,23 @@ def image_bbox_overlay(
     for card in selected_cards:
         label = int(card[0])
         x, y, w, h = card[1], card[2], card[3], card[4]
+        is_critical = card[7]
         
         # 自动颜色分配
         color = colors[label % len(colors)]
         
+        # 绘制 critical 标记
+        if is_critical:
+            center_x = x + w / 2
+            center_y = y + h / 2
+            radius = min(w, h) / 3
+            draw.ellipse(
+                [(center_x - radius, center_y - radius),
+                (center_x + radius, center_y + radius)],
+                outline="red",
+                width=border_width,
+            )
+
         # 绘制边界框
         draw.rectangle(
             [(x, y), (x + w, y + h)],
