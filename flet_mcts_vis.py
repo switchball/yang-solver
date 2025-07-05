@@ -142,7 +142,7 @@ def create_board_ui(board, size=100):
     for i, row in enumerate(board):
         for j, cell in enumerate(row):
             border = ft.border.all(1, ft.colors.BLUE_GREY_300)
-            bg_color = ft.colors.BLACK12 if (i + j) % 2 == 0 else ft.colors.WHITE
+            bg_color = ft.colors.BLUE_GREY_900 if (i + j) % 2 == 0 else ft.colors.BLUE_GREY_800
             
             grid.controls.append(
                 ft.Container(
@@ -150,7 +150,7 @@ def create_board_ui(board, size=100):
                         value=cell, 
                         size=size//2, 
                         text_align=ft.TextAlign.CENTER,
-                        color=ft.colors.BLUE_800 if cell == "X" else ft.colors.RED_800
+                        color=ft.colors.BLUE_200 if cell == "X" else ft.colors.RED_200
                     ),
                     bgcolor=bg_color,
                     border=border,
@@ -197,10 +197,10 @@ class MCTSVisualizer:
             ref=self.tree_visualization_ref,
             width=1100,
             height=800,
-            bgcolor=ft.colors.WHITE10,
+            bgcolor=ft.colors.BLUE_GREY_900,
             padding=20,
             border_radius=10,
-            border=ft.border.all(1, ft.colors.BLUE_GREY_400),
+            border=ft.border.all(1, ft.colors.BLUE_GREY_700),
             content=ft.Column(expand=True)
         )
         
@@ -214,7 +214,7 @@ class MCTSVisualizer:
                         ft.Text(ref=self.node_count_ref, value="节点总数: 1", size=14),
                         ft.Text(ref=self.expansions_ref, value="扩展次数: 0", size=14),
                         ft.Text(ref=self.simulations_ref, value="模拟次数: 0", size=14),
-                        ft.ProgressBar(width=300, height=10, value=0, color=ft.colors.GREEN, bgcolor=ft.colors.GREEN_100)
+                        ft.ProgressBar(width=300, height=10, value=0, color=ft.colors.GREEN, bgcolor=ft.colors.GREEN_900)
                     ]
                 ),
                 padding=15
@@ -261,10 +261,10 @@ class MCTSVisualizer:
         self.node_detail = ft.Container(
             ref=self.node_detail_ref,
             height=500,
-            bgcolor=ft.colors.WHITE10,
+            bgcolor=ft.colors.BLUE_GREY_900,
             padding=15,
             border_radius=10,
-            border=ft.border.all(1, ft.colors.BLUE_GREY_400),
+            border=ft.border.all(1, ft.colors.BLUE_GREY_700),
             content=ft.Text("选择一个节点查看详情", size=16)
         )
         
@@ -413,7 +413,7 @@ class MCTSVisualizer:
                             x1=parent_x, y1=parent_y + 15,
                             x2=x, y2=y - 15,
                             paint=ft.Paint(
-                                color=ft.colors.BLUE_GREY_300,
+                                color=ft.colors.BLUE_GREY_700,
                                 stroke_width=1.5
                             )
                         )
@@ -425,12 +425,12 @@ class MCTSVisualizer:
         node_containers = []
         for node_id, (x, y) in positions.items():
             node = self.all_nodes[node_id]
-            bg_color = (ft.colors.BLUE_100 
-                        if node == self.mcts.current_node else 
-                        ft.colors.BLUE_GREY_100)
-            border_color = (ft.colors.BLUE_600 
-                            if node == self.mcts.current_node else 
-                            ft.colors.BLUE_GREY_400)
+            bg_color = (ft.colors.BLUE_900
+                        if node == self.mcts.current_node else
+                        ft.colors.BLUE_GREY_800)
+            border_color = (ft.colors.BLUE_400
+                            if node == self.mcts.current_node else
+                            ft.colors.BLUE_GREY_500)
             
             node_containers.append(
                 ft.Container(
@@ -628,7 +628,7 @@ class MCTSVisualizer:
 
 # 启动应用
 def main(page: ft.Page):
-    page.theme_mode = ft.ThemeMode.LIGHT
+    page.theme_mode = ft.ThemeMode.DARK
     page.vertical_alignment = ft.MainAxisAlignment.START
     page.horizontal_alignment = ft.CrossAxisAlignment.START
     page.scroll = ft.ScrollMode.ADAPTIVE
