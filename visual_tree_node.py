@@ -1,13 +1,16 @@
+import math
 import random
+import statistics
 from typing import Optional, List
 from search.tree_node import TreeNode
 from app.yang.logic.yang_tree_node import YangTreeNode
 from app.yang.logic.yang_board_state import YangSimulatedState
+from app.yang.yang_constants import MCTS_CONFIDENCE
 
 class VisualTreeNode:
     node_id_counter = 0
     
-    def __init__(self, real_node: TreeNode, parent: Optional['VisualTreeNode'] = None):
+    def __init__(self, real_node: YangTreeNode, parent: Optional['VisualTreeNode'] = None):
         self.id = VisualTreeNode.node_id_counter
         VisualTreeNode.node_id_counter += 1
         self.real_node = real_node
@@ -15,13 +18,33 @@ class VisualTreeNode:
         self.children: List['VisualTreeNode'] = []
         
         # 从真实节点同步统计数据
+        c = MCTS_CONFIDENCE
         self.visits = real_node.visits
         self.value = real_node.rewards
-        self.q_value = real_node.rewards / real_node.visits if real_node.visits > 0 else 0.0
-        
+        self.avg_q_value = real_node.rewards / real_node.visits if real_node.visits > 0 else 0.0
+        self.q_value = real_node.best_q if real_node.visits > 0 else 0.0
+        self.confidence = 0
+        if self.parent:
+            parent_visits = self.parent.real_node.visits
+            self.confidence = c * math.sqrt(math.log(parent_visits) / real_node.visits)
+            # self.confidence = c * math.sqrt(math.log(parent_visits) / real_node.visits )
+
+
+
         # 从真实节点提取状态信息
         self.hidden_state = self._extract_state(real_node)
         self.action = real_node.action if hasattr(real_node, 'action') else None
+
+    @property
+    def children_q_stdev(self) -> float:
+        children_q_stdev = 0
+        if self.children:
+            child_qv_list = []
+            for child in self.children:
+                child_qv_list.append(child.q_value)
+            if len(child_qv_list) > 1:
+                children_q_stdev = statistics.stdev(child_qv_list)
+        return children_q_stdev
 
     def _extract_state(self, node: YangTreeNode) -> dict:
         """从真实节点中提取状态信息"""

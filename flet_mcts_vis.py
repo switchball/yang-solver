@@ -11,6 +11,7 @@ from search.tree_node import TreeNode
 from app.yang.logic.yang_tree_node import YangTreeNode
 from app.yang.logic.yang_simulator import YangSimulator
 from app.yang.yang_yolo_recognizer import YangYOLORecognizer
+from app.yang.yang_constants import MCTS_ROLLOUT_BATCH_SIZE
 
 from visual_tree_node import VisualTreeNode
 import os
@@ -20,7 +21,7 @@ from PIL import Image
 # 真实 MCTS 算法包装器
 class RealMCTSAlgorithm:
     def __init__(self):
-        # 初始化杨氏模拟器
+        # 初始化羊羊模拟器
         model_path = "runs/detect/train3/weights/best.pt"
         self.recognizer = YangYOLORecognizer(model_path)
         
@@ -35,7 +36,7 @@ class RealMCTSAlgorithm:
         self.mcts = MCTS(
             root_node=real_root,
             rollout_policy=self.rollout_policy,
-            rollout_iterations=1,
+            rollout_iterations=MCTS_ROLLOUT_BATCH_SIZE,
             node_clz=YangTreeNode
         )
         
@@ -51,18 +52,10 @@ class RealMCTSAlgorithm:
         """Rollout policy using real implementation from yang_react.py"""
         self.simulation_counter += 1
         # 使用真实rollout策略
-        from test_rollout import step
-        from copy import deepcopy
-        
-        # 获取隐藏状态
-        hstate_dict = node.state.get_hstate()._hstate
-        hstate = deepcopy(hstate_dict)
-        
-        # 模拟直到结束
-        while not step(hstate):
-            pass
+        from app.yang.yang_react import fast_rollout_policy
+        score = fast_rollout_policy(node)
             
-        return hstate["score"]
+        return score
 
     def run_iteration(self, run_step=1):
         """运行一次完整的MCTS迭代"""
@@ -97,18 +90,32 @@ class RealMCTSAlgorithm:
     def root(self):
         return self.visual_root
 
-    def reset(self, root_state):
+    def reset(self):
         """重置MCTS树"""
-        root_state = self.simulator.initialize_state()
+        # 初始化羊羊模拟器
+        model_path = "runs/detect/train3/weights/best.pt"
+        self.recognizer = YangYOLORecognizer(model_path)
+        
+        # 创建根节点 - 使用crop_im.png作为初始状态
+        from PIL import Image
+        root_image = Image.open("crop_im.png")
+        from app.yang.logic.yang_board_state import YangBoardState
+        root_state = YangBoardState(root_image, last_hstate=None, simulator=self.recognizer)
         real_root = YangTreeNode(state=root_state)
+        
+        # 初始化真实MCTS
         self.mcts = MCTS(
             root_node=real_root,
             rollout_policy=self.rollout_policy,
-            rollout_iterations=1,
+            rollout_iterations=MCTS_ROLLOUT_BATCH_SIZE,
             node_clz=YangTreeNode
         )
+        
+        # 可视化根节点
         self.visual_root = VisualTreeNode(real_root)
         self.current_visual_node = self.visual_root
+        
+        # 计数器
         self.simulation_counter = 0
         self.expansion_counter = 0
 
@@ -172,10 +179,10 @@ class MCTSVisualizer:
                 ref=self.tree_visualization_ref,
                 width=1100,
                 height=800,
-                bgcolor=ft.colors.BLUE_GREY_900,
+                bgcolor=ft.Colors.BLUE_GREY_900,
                 padding=20,
                 border_radius=10,
-                border=ft.border.all(1, ft.colors.BLUE_GREY_700),
+                border=ft.border.all(1, ft.Colors.BLUE_GREY_700),
                 content=ft.Column(expand=True)
             )
         )
@@ -190,7 +197,7 @@ class MCTSVisualizer:
                         ft.Text(ref=self.node_count_ref, value="节点总数: 1", size=14),
                         ft.Text(ref=self.expansions_ref, value="扩展次数: 0", size=14),
                         ft.Text(ref=self.simulations_ref, value="模拟次数: 0", size=14),
-                        ft.ProgressBar(width=300, height=10, value=0, color=ft.colors.GREEN, bgcolor=ft.colors.GREEN_900)
+                        ft.ProgressBar(width=300, height=10, value=0, color=ft.Colors.GREEN, bgcolor=ft.Colors.GREEN_900)
                     ]
                 ),
                 padding=15
@@ -199,29 +206,29 @@ class MCTSVisualizer:
         
         self.controls1 = ft.Row([
             ft.ElevatedButton(
-                "单步执行", 
+                "单步", 
                 on_click=self.step_forward,
-                icon=ft.icons.SKIP_NEXT_OUTLINED
+                icon=ft.Icons.SKIP_NEXT_OUTLINED
             ),
-            ft.FilledButton("完整视图", icon=ft.icons.ZOOM_OUT_MAP, 
+            ft.FilledButton("全图", icon=ft.Icons.ZOOM_OUT_MAP, 
                                on_click=self.show_full_tree_view),
             ft.ElevatedButton(
-                "连续运行N步", 
+                "N步", 
                 on_click=self.n_step_forward,
-                icon=ft.icons.PLAY_ARROW_OUTLINED
+                icon=ft.Icons.PLAY_ARROW_OUTLINED
             ),
             ft.ElevatedButton(
                 "重置", 
                 on_click=self.reset,
-                icon=ft.icons.RESTART_ALT_OUTLINED
+                icon=ft.Icons.RESTART_ALT_OUTLINED
             ),
         ], spacing=10)
 
         self.controls2 = ft.Row([
             ft.Text("选择步数 (N):"),
             ft.Slider(
-                min=1,
-                max=100,
+                min=2,
+                max=200,
                 divisions=99,  # 生成10个区间（100,200,...1000）
                 label="N = {value}",
                 value=self.step_count,
@@ -237,10 +244,10 @@ class MCTSVisualizer:
         self.node_detail = ft.Container(
             ref=self.node_detail_ref,
             height=500,
-            bgcolor=ft.colors.BLUE_GREY_900,
+            bgcolor=ft.Colors.BLUE_GREY_900,
             padding=15,
             border_radius=10,
-            border=ft.border.all(1, ft.colors.BLUE_GREY_700),
+            border=ft.border.all(1, ft.Colors.BLUE_GREY_700),
             content=ft.Text("选择一个节点查看详情", size=16)
         )
         
@@ -248,9 +255,9 @@ class MCTSVisualizer:
         left_panel = ft.Column([
             self.controls1,
             self.controls2,
-            ft.Divider(height=10, color=ft.colors.TRANSPARENT),
+            ft.Divider(height=10, color=ft.Colors.TRANSPARENT),
             self.stats_panel,
-            ft.Divider(height=10, color=ft.colors.TRANSPARENT),
+            ft.Divider(height=10, color=ft.Colors.TRANSPARENT),
             ft.Container(
                 content=ft.Text("节点详情", weight=ft.FontWeight.BOLD, size=16),
                 alignment=ft.alignment.top_left
@@ -421,7 +428,7 @@ class MCTSVisualizer:
                             x1=parent_x, y1=parent_y + 15,
                             x2=x, y2=y - 15,
                             paint=ft.Paint(
-                                color=ft.colors.BLUE_GREY_700,
+                                color=ft.Colors.BLUE_GREY_700,
                                 stroke_width=1.5
                             )
                         )
@@ -429,16 +436,34 @@ class MCTSVisualizer:
         
         canvas.shapes = lines  # 将线条添加到 Canvas
         
-        # 创建节点容器
+        # 计算最大访问次数
+        max_visits = 0
+        for node_id in positions:
+            node = self.all_nodes[node_id]
+            node_visits = math.log(node.visits + 1)
+            if node_visits > max_visits:
+                max_visits = node_visits
+        if max_visits == 0:
+            max_visits = 1
+
+        # 创建节点容器（根据访问次数设置颜色）
         node_containers = []
         for node_id, (x, y) in positions.items():
             node = self.all_nodes[node_id]
-            bg_color = (ft.colors.BLUE_900
-                        if node == self.mcts.current_visual_node else
-                        ft.colors.BLUE_GREY_800)
-            border_color = (ft.colors.BLUE_400
+            # 根据访问次数计算颜色强度（0-1）
+            ratio = math.log(node.visits + 1) / max_visits
+            
+            # 生成暗色模式友好的颜色（深蓝->紫红->深橙）
+            # 减少整体亮度，保持足够对比度
+            r = int(200 * ratio)
+            g = int(100 * ratio)
+            b = int(200 * (1 - ratio))
+            
+            bg_color = f"#{r:02x}{g:02x}{b:02x}"
+            
+            border_color = (ft.Colors.BLUE_400
                             if node == self.mcts.current_visual_node else
-                            ft.colors.BLUE_GREY_500)
+                            ft.Colors.BLUE_GREY_500)
             
             node_containers.append(
                 ft.Container(
@@ -452,11 +477,14 @@ class MCTSVisualizer:
                     on_click=lambda e, n=node: self.show_node_details(n),
                     content=ft.Column([
                         ft.Text(
-                            f"{node.id}: {node.visits}/{node.q_value:.2f}", 
-                            tooltip=f"{node.id}: {node.visits} visits, Q-value: {node.q_value:.2f} #Child: {len(node.children)}\n" 
+                            f"{node.id}: {node.visits}/{node.q_value:.2f}",
+                            tooltip=f"{node.id}: {node.visits} visits, Avg. Q-value: {node.avg_q_value:.2f}, Best. Q-value: {node.q_value:.2f} #Child: {len(node.children)}\n"
+                                    f"Confidence: {node.confidence:.2f} UCB: {node.confidence + node.q_value:.2f}\n" 
+                                    f"Children Q-Stdev: {node.children_q_stdev:.2f}"
                                     f"Win: {node.winning_rate:.0%}",
-                            size=9),
-                    ], 
+                            size=9,
+                            color=ft.Colors.WHITE),  # 确保文字为白色
+                    ],
                     alignment=ft.MainAxisAlignment.CENTER,
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER)
                 )
@@ -529,8 +557,11 @@ class MCTSVisualizer:
 
     def show_node_details(self, node: VisualTreeNode):
         # 获取真实节点状态
-        real_state = node.real_node.state # if hasattr(node.real_node, 'state') else None
+        real_state = node.real_node.state 
         
+        # 关联到达的动作
+        pending_action = real_state.pending_action_list if hasattr(real_state, 'pending_action_list') else None
+
         # 创建棋盘UI
         board_ui = create_board_ui(
             real_state
@@ -543,17 +574,19 @@ class MCTSVisualizer:
         details = ft.Column([
             ft.Row([
                 ft.Text(f"节点ID: {node.id}", size=14, weight=ft.FontWeight.BOLD, 
-                        color=ft.colors.BLUE_700),
-                ft.Icon(ft.icons.INFO_OUTLINE, color=ft.colors.BLUE_400)
+                        color=ft.Colors.BLUE_700),
+                ft.Icon(ft.Icons.INFO_OUTLINE, color=ft.Colors.BLUE_400)
             ]),
             ft.Text(f"访问次数: {node.visits}", size=14),
-            ft.Text(f"累计价值: {node.value:.2f}", size=14),
-            ft.Text(f"平均价值: {node.q_value:.2f}", size=14),
-            ft.Text(f"赢率: {node.winning_rate:.1%}", size=14, color=ft.colors.GREEN_700),
+            # ft.Text(f"累计价值: {node.value:.2f}", size=14),
+            ft.Text(f"平均价值: {node.avg_q_value:.2f}", size=14),
+            ft.Text(f"最优价值: {node.q_value:.2f}", size=14),
+            # ft.Text(f"赢率: {node.winning_rate:.1%}", size=14, color=ft.Colors.GREEN_700),
             ft.Divider(height=10),
             ft.Text("当前局面:", weight=ft.FontWeight.BOLD),
             board_ui,
             ft.Divider(height=10),
+            ft.Text(f"关联动作: {pending_action}", size=14),
             ft.Text("隐藏状态:", weight=ft.FontWeight.BOLD),
             json_view
         ], scroll=ft.ScrollMode.ALWAYS)
@@ -599,8 +632,8 @@ class MCTSVisualizer:
         self.update_tree_visualization()
         
         self.page.show_snack_bar(ft.SnackBar(
-            ft.Text(f"已连续运行 {self.step_count} 步", color=ft.colors.WHITE),
-            bgcolor=ft.colors.GREEN,
+            ft.Text(f"已连续运行 {self.step_count} 步", color=ft.Colors.WHITE),
+            bgcolor=ft.Colors.GREEN,
             duration=1000
         ))
 

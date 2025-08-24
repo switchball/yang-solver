@@ -100,7 +100,7 @@ def perceive_recognize(sleep_seconds=3):
     XYWHN = (0.05, 0.19, 0.9, 0.68)
     crop_im = crop_image(img, xywhn=XYWHN)
     crop_im.save('crop_im.png')
-    return img, crop_im
+    return img, crop_im, coords
 
 def evaluate(hstate: YangHiddenState):
 
@@ -130,11 +130,16 @@ def main(page: ft.Page):
     progress_txt = ft.Text("Progress:...")
     progress_pb = ft.ProgressBar(width=600)
 
-    ori_image, crop_im = perceive_recognize(sleep_seconds=1)
+    ori_image, crop_im, coords = perceive_recognize(sleep_seconds=1)
     # 获取图像的 base64 编码
     buffered = BytesIO()
     crop_im.save(buffered, format="PNG")
     img_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+
+    # with open("crop_im.png", "rb") as img_file:
+    #     img_data = img_file.read()
+    # import PIL
+    # crop_im = PIL.Image.open(BytesIO(img_data))
 
     img = ft.Image(
         src_base64=img_base64,
@@ -174,7 +179,7 @@ def main(page: ft.Page):
 
     def plus_click(e):
         while True:
-            ori_image, crop_im = perceive_recognize(sleep_seconds=0)
+            ori_image, crop_im, coords = perceive_recognize(sleep_seconds=0)
             # 获取图像的 base64 编码
             buffered = BytesIO()
             crop_im.save(buffered, format="PNG")
@@ -227,9 +232,12 @@ def main(page: ft.Page):
             progress_pb.value = progress
             page.update()
 
+            action = yang_react.cvt(result2, chosen_node)
+            print("Action is :", action)
+            action.execute(coords)
 
-            time.sleep(0.5)
-            break
+            time.sleep(1.5)
+            # break
 
     # page.add(reward_txt)
 
