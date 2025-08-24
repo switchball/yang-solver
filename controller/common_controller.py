@@ -40,6 +40,8 @@ class CommonController(object):
             # react
             gui_action = self.react.react(maybe_result)
 
+            gui_action = self.react.cvt(maybe_result, gui_action)
+
             # execute
             gui_action.execute(coords)
         

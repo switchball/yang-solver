@@ -3,12 +3,14 @@ from copy import deepcopy
 from app.yang.logic.yang_board_state import YangBoardState
 from app.yang.logic.yang_tree_node import YangTreeNode
 from app.yang.yang_constants import (
+    MAIN_AREA_POSITION,
     MCTS_RUN_ITERATION, RWD_NON_CRITICAL_ACTION, MCTS_ROLLOUT_BATCH_SIZE, RWD_IS_CRITICAL_ACTION
 )
 
 from controller.react.base_react import BaseReact
 from controller.recognize.maybe_result import MaybeResult
 from controller.react.gui_action import GUIAction
+from controller.react.mouse_action import ClickAction, DragAction
 
 from search.mcts import MCTS
 from test_rollout import step
@@ -57,3 +59,16 @@ class YangReact(BaseReact):
         #     return BaseReact.GUIAction.NONE
         # else:
         #     return BaseReact.GUIAction.RETRY
+
+    def cvt(self, result, child_node):
+        crop_img = result.result.board_img
+        width, height = crop_img.size
+        click_x = child_node.action[5]  # x
+        click_y = child_node.action[6]  # y
+
+        # 将 [棋盘坐标] 转换为 [归一化的相对屏幕坐标] 
+        local_x = click_x / width
+        local_y = click_y / height
+        x, y, w, h = MAIN_AREA_POSITION
+
+        return ClickAction(x + w * local_x, y + h * local_y, delay=0.2)
