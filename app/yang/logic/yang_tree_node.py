@@ -11,11 +11,16 @@ class YangTreeNode(TreeNode):
         self.prev_state = None
         if action is not None:
             self.prev_state = state
+            if isinstance(self.prev_state, YangSimulatedState):
+                pending_actions = deepcopy(self.prev_state.pending_action_list)  # 获取上一步的pending_action
+            else:
+                pending_actions = []
+            pending_actions.append(action)
             self.state = YangSimulatedState(
                 self.prev_state.get_crt_img(), 
                 last_hstate=deepcopy(self.prev_state.get_hstate()),  # deepcopy?
                 simulator=self.prev_state.simulator,
-                pending_action=action
+                pending_action_list=pending_actions
             )
 
         self.visited_action_mask = None

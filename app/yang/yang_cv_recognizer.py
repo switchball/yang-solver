@@ -25,7 +25,7 @@ class YangCvRecognizer(BaseRecognizer):
         print("P\n", np.array(pool_cards), "\nQ\n", np.array(queue_cards), '#')
 
         if self._last_hstate is None:
-            hstate = YangHiddenState.from_new_cards(pool_cards, queue_cards)
+            hstate = YangHiddenState.from_new_cards(pool_cards, queue_cards, pending_actions=[])
         else:
             hstate = self._last_hstate.continue_from_cards(pool_cards, queue_cards)
 
