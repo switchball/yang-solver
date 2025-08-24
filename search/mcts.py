@@ -1,6 +1,8 @@
 import random
 import math
 from collections import defaultdict
+from typing import List, Dict
+from app.yang.yang_constants import MCTS_CONFIDENCE
 
 from search.tree_node import TreeNode
 
@@ -11,16 +13,21 @@ class MCTS:
         self.rollout_policy = rollout_policy
         self.rollout_iterations = rollout_iterations
         self.node_clz = node_clz
-        self.children = {}
+        self.children = {}  # type: Dict[TreeNode, List[TreeNode]]
         self.parent = {}
+        self.verbose = False
 
     def _uct_select(self, node):
         # All children of node should already be expanded:
         assert all(n.is_visited() for n in self.children[node])
 
         # 使用UCB1公式选择子节点
-        c = math.sqrt(2)
-        return max(self.children[node], key=lambda x: x.rewards / x.visits + c * math.sqrt(math.log(node.visits) / x.visits))
+        c = MCTS_CONFIDENCE
+        return max(
+            self.children[node], 
+            # key=lambda x: x.rewards / x.visits + c * math.sqrt(math.log(node.visits) / x.visits )
+            key=lambda x: x.best_q + c * math.sqrt(math.log(node.visits) / x.visits )
+        )
 
     def _select(self, node):
         """从根节点开始, 向下寻找一个可展开的子节点"""
@@ -34,8 +41,13 @@ class MCTS:
             # 检查是否存在未被尝试过的子节点
             visited_action_mask = {child.action for child in self.children[node]}
             unexplored = set(node.available_actions) - visited_action_mask
+            if len(node.available_actions) == 0:
+                # node is just explored and has no children
+                print("mcts:46 hit terminal node")
+                return path
             if unexplored:
                 action = self.sample_action_from_node(node, visited_action_mask)
+                node.increase_tried_action_num()
                 child_node = self.node_clz(state=node.state, action=action)
                 self.children[node].append(child_node)
                 self.parent[child_node] = node
@@ -51,7 +63,7 @@ class MCTS:
         # 根据权重进行采样
         return random.choices(actions, weights=weights, k=1)[0]
 
-    def expand_node(self, node):
+    def expand_node(self, node: TreeNode):
         # 若第一次遇到该节点，则不扩展，而是直接计算 rollout
         if node.is_visited():
             node.expand_for_next_actions()
@@ -69,19 +81,54 @@ class MCTS:
             total_reward += self.rollout_policy(node)
         return total_reward / self.rollout_iterations
 
-    def backpropagate(self, node, reward):
+    def backpropagate(self, node: TreeNode, reward):
+        node._rollout_q = reward
         # 反向传播结果
         while node is not None:
             node.visits += 1
             node.rewards += reward
+
+            # node.best_q = reward
+            # visited_action_mask = {child.action for child in self.children[node]}
+            # node_is_fully_explored = len(node.available_actions) == len(visited_action_mask)
+            # assert len(node.available_actions) >= len(visited_action_mask)
+            # node.update_q(reward, node_is_fully_explored)
+            # if node.best_q < -1000:
+            #     breakpoint()
+
             node = self.parent.get(node, None)
 
     def best_child(self, node):
         # 选择最佳子节点，使用平均回报
-        print("Best child key", [x.action for x in self.children[node]])
-        print("Best child rwd", [x.rewards / x.visits for x in self.children[node]])
-        print("Best child visits", [x.visits for x in self.children[node]])
-        return max(self.children[node], key=lambda x: x.rewards / x.visits)
+        if self.verbose:
+            print("Best child key", [x.action for x in self.children[node]])
+            print("Best child rwd", [x.rewards / x.visits for x in self.children[node]])
+            print("Best child q", [x.best_q for x in self.children[node]])
+            print("Best child visits", [x.visits for x in self.children[node]])
+        # return max(self.children[node], key=lambda x: x.rewards / x.visits)
+
+        # 选择 argmax best_Q 的节点，_calc_and_refresh_q 需传入根节点
+        self._calc_and_refresh_q(node)
+        return max(self.children[node], key=lambda x: x.best_q)
+
+    def _calc_and_refresh_q(self, node: TreeNode) -> None:
+        # 计算并递归更新每个节点的Q值
+        if len(node.available_actions) == 0:
+            node.set_best_q(node._rollout_q)
+            return node._rollout_q  # 子节点直接返回
+        elif not node.is_fully_expanded():
+            # 部分探索节点，取所有子节点的 best q，加上 rollout 的结果
+            q_of_children = [self._calc_and_refresh_q(node) for node in self.children[node]]
+            q_of_children.append(node._rollout_q)
+            max_q = max(q_of_children)
+            node.set_best_q(max_q)
+            return max_q
+        else:
+            # 完全探索节点，取所有子节点的 best q
+            q_of_children = [self._calc_and_refresh_q(node) for node in self.children[node]]
+            max_q = max(q_of_children)
+            node.set_best_q(max_q)
+            return max_q
 
     def stats(self):
         mean_rwd = [x.rewards / x.visits for x in self.children[self.root_node]]
@@ -97,6 +144,7 @@ class MCTS:
             self.expand_node(leaf_node)
             reward = self.simulate(leaf_node)
             self.backpropagate(leaf_node, reward)
+            self._calc_and_refresh_q(self.root_node)
             print(f"MCTS Iteration {iter_idx} path: {path} reward: {reward}")
         return self.best_child(self.root_node)
 

@@ -6,8 +6,12 @@ class TreeNode:
         self.action = action
         self.visits = 0
         self.rewards = 0.0
+        self._best_q = float("-inf")
+        self._rollout_q = None
+        self._best_q_without_rollout = float("-inf")
         self._available_actions = None
         self._action_weights = None
+        self._tried_action_num = 0
 
     def is_terminal(self):
         """判断当前节点是否是目标节点"""
@@ -41,7 +45,37 @@ class TreeNode:
         return [1.0, 1.0, 1.0]  # 示例权重
 
     def is_fully_expanded(self):
-        return len(self.untried_actions) == 0
+        return self._available_actions is not None and len(self._available_actions) <= self._tried_action_num
 
     def is_visited(self):
         return self.visits > 0
+    
+    def increase_tried_action_num(self):
+        self._tried_action_num += 1
+    
+    @property
+    def best_q(self):
+        """返回子节点的最优 Q 值
+        
+        如果子节点没有被完全探索，初次 rollout_q 也计入其中
+        如果子节点已经全部探索完，则取所有子节点"""
+        return self._best_q
+
+    def set_best_q(self, q: float):
+        """设置子节点的最优 Q 值"""
+        self._best_q = q
+
+    # def update_q(self, reward: float, is_fully_explored: bool):
+    #     """更新 Q 值"""
+    #     # 第一次更新
+    #     if self._rollout_q is None:
+    #         self._rollout_q = reward
+    #         self.best_q = self._rollout_q
+    #     # 后续的更新
+    #     else:
+    #         self._best_q_without_rollout = max(self._best_q_without_rollout, reward)
+    #         self.best_q = max(self.best_q, self._best_q_without_rollout)
+        
+    #     # 如果节点已探索，则忽略 rollout_q 的值，除非第一次就探索到了叶子节点
+    #     if is_fully_explored and self._best_q_without_rollout != float("-inf"):
+    #         self.best_q = self._best_q_without_rollout
